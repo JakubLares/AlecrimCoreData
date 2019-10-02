@@ -97,15 +97,27 @@ open class GenericPersistentContainer<ContextType: NSManagedObjectContext> {
     }
     
     // MARK: -
-    
+
+    @discardableResult
+    public convenience init(name: String, completionHandler: @escaping ((GenericPersistentContainer<ContextType>) -> Void),
+                            failure: ((Error) -> Void)? = nil) {
+        self.init(name: name, automaticallyLoadPersistentStores: true, completionHandler: completionHandler, failure: failure)
+    }
+
     public convenience init(name: String) {
-        self.init(name: name, automaticallyLoadPersistentStores: true)
+        self.init(name: name, automaticallyLoadPersistentStores: true, completionHandler: { _ in
+        }, failure: { error in
+            AlecrimCoreDataError.handleError(error)
+        })
     }
     
-    public convenience init(name: String, automaticallyLoadPersistentStores: Bool) {
+    public convenience init(name: String, automaticallyLoadPersistentStores: Bool,
+                            completionHandler: @escaping ((GenericPersistentContainer<ContextType>) -> Void),
+                            failure: ((Error) -> Void)?) {
         if let modelURL = Bundle.main.url(forResource: name, withExtension: "momd") ?? Bundle.main.url(forResource: name, withExtension: "mom") {
             if let model = NSManagedObjectModel(contentsOf: modelURL) {
-                self.init(name: name, managedObjectModel: model, automaticallyLoadPersistentStores: automaticallyLoadPersistentStores)
+                self.init(name: name, managedObjectModel: model, automaticallyLoadPersistentStores: automaticallyLoadPersistentStores,
+                          completionHandler: completionHandler, failure: failure)
                 return
             }
             
@@ -117,11 +129,13 @@ open class GenericPersistentContainer<ContextType: NSManagedObjectContext> {
             
         }
 
-        self.init(name: name, managedObjectModel: model, automaticallyLoadPersistentStores: automaticallyLoadPersistentStores)
+        self.init(name: name, managedObjectModel: model, automaticallyLoadPersistentStores: automaticallyLoadPersistentStores,
+                  completionHandler: completionHandler, failure: failure)
     }
     
     
-    public init(name: String, managedObjectModel model: NSManagedObjectModel, automaticallyLoadPersistentStores: Bool) {
+    public init(name: String, managedObjectModel model: NSManagedObjectModel, automaticallyLoadPersistentStores: Bool,
+                completionHandler: @escaping ((GenericPersistentContainer<ContextType>) -> Void), failure: ((Error) -> Void)?) {
         let directoryURL = type(of: self).directoryURL()
         
         do {
@@ -144,19 +158,14 @@ open class GenericPersistentContainer<ContextType: NSManagedObjectContext> {
         //
         if automaticallyLoadPersistentStores {
             self.loadPersistentStores { storeDescription, error in
-                guard let error = error else { return }
-                
-                /*
-                 Typical reasons for an error here include:
-                 * The parent directory does not exist, cannot be created, or disallows writing.
-                 * The persistent store is not accessible, due to permissions or data protection when the device is locked.
-                 * The device is out of space.
-                 * The store could not be migrated to the current model version.
-                 Check the error message to determine what the actual problem was.
-                 */
-                
-                AlecrimCoreDataError.fatalError("Unresolved error \(error), \((error as NSError).userInfo)")
+                if let error = error {
+                    failure?(error)
+                } else {
+                    completionHandler(self)
+                }
             }
+        } else {
+            completionHandler(self)
         }
     }
     
